@@ -6,9 +6,42 @@ mp.msg.info("MPV-CUT LOADED")
 
 utils = require "mp.utils"
 
+local overlay = mp.create_osd_overlay("ass-events")
+local osd_duration = mp.get_property_number("osd-duration") / 1000
+local osd_font_size = mp.get_property_number("osd-font-size") or 24
+local timeout = nil
+
+function display_message_top_left(text, clear_on_timeout)
+    -- This is the ASS-formatted string.
+    -- {\pos(45,50)} places the text 45 pixels from the left and 50 pixels from the top.
+    -- {\fs24} sets the font size to 24.
+    -- {\c&HFFFFFF&} sets the color to white.
+    local ass_string = '{\\fs' .. osd_font_size .. '}{\\c&HFFFFFF&}{\\pos(45,50)}' .. text
+
+    -- Set the overlay data to the ASS string.
+    overlay.data = ass_string
+
+    -- Update the overlay to display the message.
+    overlay:update()
+
+    -- Remove any existing timeout to prevent conflicts if the function is called again.
+    if timeout ~= nil then
+        timeout:kill()
+    end
+
+    -- Schedule a new timeout to clear the message.
+    if clear_on_timeout then
+		timeout = mp.add_timeout(osd_duration, function()
+			overlay.data = ""
+			overlay:update()
+		end)
+	end
+end
+
+
 local function print(s)
 	mp.msg.info(s)
-	mp.osd_message(s)
+	display_message_top_left(s, true)
 end
 
 local function table_to_str(o)
@@ -170,22 +203,9 @@ local function get_times(start_time, end_time)
 	return d
 end
 
-text_overlay = mp.create_osd_overlay("ass-events")
-text_overlay.hidden = true
-text_overlay:update()
-
-local function text_overlay_off()
-	-- https://github.com/mpv-player/mpv/issues/10227
-	text_overlay:update()
-	text_overlay.hidden = true
-	text_overlay:update()
-end
-
 local function text_overlay_on()
 	local channel = get_current_channel_name()
-	text_overlay.data = string.format("%s in %s from %s", ACTION, channel, START_TIME)
-	text_overlay.hidden = false
-	text_overlay:update()
+	display_message_top_left(string.format("%s in %s from %s", ACTION, channel, START_TIME), false)
 end
 
 local function print_or_update_text_overlay(content)
@@ -213,7 +233,6 @@ local function put_time()
 		text_overlay_on()
 		return
 	end
-	text_overlay_off()
 	if time > START_TIME then
 		cut(START_TIME, time)
 		START_TIME = nil
@@ -224,7 +243,6 @@ local function put_time()
 end
 
 local function cancel_cut()
-	text_overlay_off()
 	START_TIME = nil
 	print("CANCELLED CUT")
 end
